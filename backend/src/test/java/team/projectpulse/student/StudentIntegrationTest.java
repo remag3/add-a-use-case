@@ -1,7 +1,10 @@
 package team.projectpulse.student;
 
 import tools.jackson.databind.json.JsonMapper;
+import jakarta.persistence.EntityManager;
 import team.projectpulse.AbstractIntegrationTest;
+import team.projectpulse.instructor.Instructor;
+import team.projectpulse.section.Section;
 import team.projectpulse.system.StatusCode;
 import org.hamcrest.Matchers;
 import org.json.JSONObject;
@@ -21,17 +24,22 @@ import org.springframework.util.MultiValueMap;
 import java.util.HashMap;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @DisplayName("Integration tests for Student API endpoints")
 class StudentIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     MockMvc mockMvc;
+
+    @Autowired
+    EntityManager entityManager;
 
     @Autowired
     JsonMapper jsonMapper;
@@ -305,6 +313,91 @@ class StudentIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.code").value(StatusCode.FORBIDDEN))
                 .andExpect(jsonPath("$.message").value("No permission."))
                 .andExpect(jsonPath("$.data").value("Access Denied"));
+    }
+
+    @Test
+    void testAdminDeactivatesStudentSuccess() throws Exception {
+        // When: Course admin deactivates student 4 (John)
+        this.mockMvc.perform(put(this.baseUrl + "/students/4/deactivate")
+                        .accept(MediaType.APPLICATION_JSON)
+                        .header(HttpHeaders.AUTHORIZATION, this.adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.flag").value(true))
+                .andExpect(jsonPath("$.code").value(StatusCode.SUCCESS))
+                .andExpect(jsonPath("$.message").value("Deactivate student successfully"))
+                .andExpect(jsonPath("$.data.id").value(4))
+                .andExpect(jsonPath("$.data.enabled").value(false))
+                .andExpect(jsonPath("$.data.teamName").value("Team1"));
+
+        // Then: DB verifies enabled == false and team remains assigned
+        Student student = this.entityManager.find(Student.class, 4);
+        assertThat(student.isEnabled()).isFalse();
+        assertThat(student.getTeam()).isNotNull();
+        assertThat(student.getTeam().getTeamName()).isEqualTo("Team1");
+    }
+
+    @Test
+    void testAssignedInstructorDeactivatesStudentSuccess() throws Exception {
+        // When: Assigned instructor Bill deactivates student 5 (Eric)
+        this.mockMvc.perform(put(this.baseUrl + "/students/5/deactivate")
+                        .accept(MediaType.APPLICATION_JSON)
+                        .header(HttpHeaders.AUTHORIZATION, this.instructorBillToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.flag").value(true))
+                .andExpect(jsonPath("$.code").value(StatusCode.SUCCESS))
+                .andExpect(jsonPath("$.message").value("Deactivate student successfully"))
+                .andExpect(jsonPath("$.data.id").value(5))
+                .andExpect(jsonPath("$.data.enabled").value(false));
+
+        Student student = this.entityManager.find(Student.class, 5);
+        assertThat(student.isEnabled()).isFalse();
+    }
+
+    @Test
+    void testUnassignedInstructorDeactivatesStudentForbidden() throws Exception {
+        // Given: Bill is unassigned from course section 2
+        Section section = this.entityManager.find(Section.class, 2);
+        Instructor bill = this.entityManager.createQuery("select i from Instructor i where i.email = 'b.gates@abc.edu'", Instructor.class).getSingleResult();
+        section.removeInstructor(bill);
+        this.entityManager.flush();
+
+        // When: Unassigned instructor Bill attempts to deactivate student 4
+        this.mockMvc.perform(put(this.baseUrl + "/students/4/deactivate")
+                        .accept(MediaType.APPLICATION_JSON)
+                        .header(HttpHeaders.AUTHORIZATION, this.instructorBillToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.flag").value(false))
+                .andExpect(jsonPath("$.code").value(StatusCode.FORBIDDEN))
+                .andExpect(jsonPath("$.message").value("No permission."));
+    }
+
+    @Test
+    void testStudentDeactivatesSelfForbidden() throws Exception {
+        // When: Student John attempts to deactivate his own account
+        this.mockMvc.perform(put(this.baseUrl + "/students/4/deactivate")
+                        .accept(MediaType.APPLICATION_JSON)
+                        .header(HttpHeaders.AUTHORIZATION, this.studentJohnToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.flag").value(false))
+                .andExpect(jsonPath("$.code").value(StatusCode.FORBIDDEN))
+                .andExpect(jsonPath("$.message").value("No permission."));
+    }
+
+    @Test
+    void testDeactivateAlreadyInactiveStudentReturnsBadRequest() throws Exception {
+        // Given: Student 4 is already deactivated in DB
+        Student student = this.entityManager.find(Student.class, 4);
+        student.setEnabled(false);
+        this.entityManager.flush();
+
+        // When: Admin calls deactivate on already inactive student
+        this.mockMvc.perform(put(this.baseUrl + "/students/4/deactivate")
+                        .accept(MediaType.APPLICATION_JSON)
+                        .header(HttpHeaders.AUTHORIZATION, this.adminToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.flag").value(false))
+                .andExpect(jsonPath("$.code").value(StatusCode.INVALID_ARGUMENT))
+                .andExpect(jsonPath("$.message").value("Student is already deactivated"));
     }
 
 }
