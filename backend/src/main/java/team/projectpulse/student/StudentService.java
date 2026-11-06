@@ -125,6 +125,18 @@ public class StudentService {
         return this.studentRepository.save(oldStudent);
     }
 
+    public Student deactivateStudent(Integer studentId) {
+        Student student = this.studentRepository.findById(studentId)
+                .orElseThrow(() -> new ObjectNotFoundException("student", studentId));
+
+        if (!student.isEnabled()) {
+            throw new IllegalStateException("Student is already deactivated");
+        }
+
+        student.setEnabled(false);
+        return this.studentRepository.save(student);
+    }
+
     public void deleteStudent(Integer studentId) {
         this.studentRepository.findById(studentId)
                 .orElseThrow(() -> new ObjectNotFoundException("student", studentId));

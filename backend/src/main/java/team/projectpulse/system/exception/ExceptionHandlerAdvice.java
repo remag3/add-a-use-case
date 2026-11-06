@@ -161,9 +161,9 @@ public class ExceptionHandlerAdvice {
         return new Result(false, StatusCode.INVALID_ARGUMENT, ex.getMessage());
     }
 
-    @ExceptionHandler(IllegalArgumentException.class)
+    @ExceptionHandler({IllegalArgumentException.class, IllegalStateException.class})
     @ResponseStatus(HttpStatus.BAD_REQUEST)
-    Result handleIllegalArgumentException(IllegalArgumentException ex) {
+    Result handleIllegalArgumentException(RuntimeException ex) {
         return new Result(false, StatusCode.INVALID_ARGUMENT, ex.getMessage());
     }
 

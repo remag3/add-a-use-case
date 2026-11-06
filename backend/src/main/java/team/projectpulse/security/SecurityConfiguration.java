@@ -15,6 +15,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.access.hierarchicalroles.RoleHierarchy;
 import org.springframework.security.access.hierarchicalroles.RoleHierarchyImpl;
+import org.springframework.security.authorization.AuthorityAuthorizationManager;
 import org.springframework.security.authorization.AuthorizationManagers;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -204,6 +205,7 @@ public class SecurityConfiguration {
                         .requestMatchers(HttpMethod.POST, this.baseUrl + "/students/search").hasAuthority("ROLE_instructor")
                         .requestMatchers(HttpMethod.POST, this.baseUrl + "/students").permitAll()
                         .requestMatchers(HttpMethod.GET, this.baseUrl + "/students/{studentId}").access(this.userOwnershipAuthorizationManager)
+                        .requestMatchers(HttpMethod.PUT, this.baseUrl + "/students/{studentId}/deactivate").access(AuthorizationManagers.anyOf(AuthorityAuthorizationManager.hasAuthority("ROLE_admin"), this.studentInstructorAuthorizationManager))
                         .requestMatchers(HttpMethod.PUT, this.baseUrl + "/students/{studentId}").access(this.userOwnershipAuthorizationManager)
                         .requestMatchers(HttpMethod.DELETE, this.baseUrl + "/students/{studentId}").access(this.userOwnershipAuthorizationManager)
                         .requestMatchers(HttpMethod.GET, this.baseUrl + "/students/teams/{teamId}").access(this.teamMembershipAuthorizationManager)

@@ -22,6 +22,7 @@ import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.time.*;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -395,6 +396,30 @@ class EvaluationServiceTest {
     }
 
     @Test
+    void testAddPeerEvaluationForDeactivatedStudentThrowsException() {
+        // Given
+        LocalDate fixedDate = LocalDate.of(2023, 8, 8);
+        Clock fixedClock = Clock.fixed(fixedDate.atStartOfDay(ZoneId.systemDefault()).toInstant(), ZoneId.systemDefault());
+        given(this.clock.instant()).willReturn(fixedClock.instant());
+        given(this.clock.getZone()).willReturn(fixedClock.getZone());
+
+        Student inactiveEvaluatee = new Student("woody", "Woody", "Allen", "w.allen@abc.edu", "123456", false, "student");
+        inactiveEvaluatee.setId(5);
+        inactiveEvaluatee.setTeam(amanda.getTeam());
+        inactiveEvaluatee.setSection(amanda.getSection());
+
+        PeerEvaluation newPeerEvaluation = new PeerEvaluation("2023-W31", amanda, inactiveEvaluatee, List.of(), "public comment", "private comment");
+
+        // When
+        Throwable throwable = catchThrowable(() -> this.evaluationService.addPeerEvaluation(newPeerEvaluation));
+
+        // Then
+        assertThat(throwable)
+                .isInstanceOf(PeerEvaluationIllegalArgumentException.class)
+                .hasMessage("Cannot evaluate a deactivated student.");
+    }
+
+    @Test
     void testAddPeerEvaluationDuplicatedEvaluation() {
         // Given
         LocalDate fixedDate = LocalDate.of(2023, 8, 8);
@@ -590,6 +615,35 @@ class EvaluationServiceTest {
         assertThat(report.getPeerEvaluationAverages().get(1).getAverageTotalScore()).isCloseTo(50.0, within(0.01));
         assertThat(report.getPeerEvaluationAverages().get(2).getAverageTotalScore()).isCloseTo(51.0, within(0.01));
         assertThat(report.getPeerEvaluationAverages().get(3).getAverageTotalScore()).isCloseTo(52.0, within(0.01));
+    }
+
+    @Test
+    void testGenerateWeeklyPeerEvaluationReportExcludesInactiveStudentWithNoEvals() {
+        // Given
+        Student inactiveStudent = new Student("inactive", "Inactive", "Student", "inactive@abc.edu", "123456", false, "student");
+        inactiveStudent.setId(99);
+        Team team = new Team("Team1", "description", "https://team1.com");
+        team.setTeamId(1);
+        inactiveStudent.setTeam(team);
+
+        List<Student> studentsWithInactive = new ArrayList<>(this.students);
+        studentsWithInactive.add(inactiveStudent);
+
+        given(this.sectionRepository.findById(anyInt())).willReturn(Optional.of(new Section("2023-2024", LocalDate.of(2023, 8, 14), LocalDate.of(2024, 4, 29), true, DayOfWeek.MONDAY, LocalTime.of(23, 59), DayOfWeek.TUESDAY, LocalTime.of(23, 59))));
+        given(this.studentRepository.findBySectionSectionId(anyInt())).willReturn(studentsWithInactive);
+        given(this.evaluationRepository.findByWeekAndEvaluateeId("2023-W31", 3)).willReturn(this.johnsEvaluations);
+        given(this.evaluationRepository.findByWeekAndEvaluateeId("2023-W31", 4)).willReturn(this.ericsW31Evaluations);
+        given(this.evaluationRepository.findByWeekAndEvaluateeId("2023-W31", 5)).willReturn(this.woodysEvaluations);
+        given(this.evaluationRepository.findByWeekAndEvaluateeId("2023-W31", 6)).willReturn(this.amandasEvaluations);
+        given(this.evaluationRepository.findByWeekAndEvaluateeId("2023-W31", 7)).willReturn(List.of());
+        given(this.evaluationRepository.findByWeekAndEvaluateeId("2023-W31", 99)).willReturn(List.of());
+
+        // When
+        WeeklyPeerEvaluationReport report = this.evaluationService.generateWeeklyPeerEvaluationReportForSection(2, "2023-W31");
+
+        // Then: inactiveStudent with no evals should be excluded, leaving exactly the 5 active students
+        assertThat(report.getPeerEvaluationAverages()).hasSize(5);
+        assertThat(report.getPeerEvaluationAverages().stream().noneMatch(a -> a.getStudentId().equals(99))).isTrue();
     }
 
     @Test
