@@ -67,6 +67,11 @@ public class EvaluationService {
             throw new PeerEvaluationIllegalArgumentException("The evaluator and evaluatee must be on the same team.");
         }
 
+        // Make sure the evaluatee is active (KD-STU-peer-eval-omission, BR-student-lifecycle)
+        if (!newPeerEvaluation.getEvaluatee().isEnabled()) {
+            throw new PeerEvaluationIllegalArgumentException("Cannot evaluate a deactivated student.");
+        }
+
         // Make sure this is not a duplicate evaluation
         if (this.evaluationRepository.findByWeekAndEvaluatorIdAndEvaluateeId(newPeerEvaluation.getWeek(), newPeerEvaluation.getEvaluator().getId(), newPeerEvaluation.getEvaluatee().getId()).isPresent()) {
             throw new PeerEvaluationIllegalArgumentException("You have already submitted an evaluation for " + newPeerEvaluation.getEvaluatee().getFirstName() + " in this week.");
@@ -224,7 +229,14 @@ public class EvaluationService {
         List<Student> students = this.studentRepository.findBySectionSectionId(sectionId).stream().filter(student -> student.getTeam() != null).collect(Collectors.toList());
 
         // For each student, compute her average total score, collect all public comments and private comments, and compute rating averages for each criterion.
+        // Inactive students with no evaluations in the target week are excluded from the report (KD-STU-peer-eval-omission, BR-submission-owed).
         students.forEach(student -> {
+            if (!student.isEnabled()) {
+                List<PeerEvaluation> evaluations = this.evaluationRepository.findByWeekAndEvaluateeId(week, student.getId());
+                if (evaluations.isEmpty()) {
+                    return;
+                }
+            }
             PeerEvaluationAverage peerEvaluationAverage = getPeerEvaluationAverage(week, student);
             report.getPeerEvaluationAverages().add(peerEvaluationAverage);
         });
