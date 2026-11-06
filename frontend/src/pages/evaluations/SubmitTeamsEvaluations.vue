@@ -182,7 +182,8 @@ onMounted(async () => {
 async function loadStudents() {
   // On the back end, the page number starts from 0, so subtract 1 here
   const result: FindStudentByTeamIdResponse = await findStudentsByTeamId(teamId.value)
-  students.value = result.data
+  // Inactive teammates are excluded from the peer evaluation form roster (KD-STU-peer-eval-omission, BR-submission-owed)
+  students.value = result.data.filter((student) => student.enabled)
 }
 
 // Load criteria information

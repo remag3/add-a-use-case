@@ -39,7 +39,7 @@
           <el-tag type="danger" v-else>Disabled</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="Operations" width="120">
+      <el-table-column label="Operations" width="140">
         <template #default="{ row }">
           <el-button
             icon="Edit"
@@ -47,6 +47,15 @@
             plain
             type="primary"
             @click.stop="showEditStudentDialog(row)"
+          ></el-button>
+          <el-button
+            icon="SwitchButton"
+            circle
+            plain
+            type="danger"
+            v-if="row.enabled"
+            title="Deactivate Student"
+            @click.stop="showDeactivateDialog(row)"
           ></el-button>
         </template>
       </el-table-column>
@@ -73,12 +82,49 @@
         @close-dialog="closeDialog"
       ></EditStudentForm>
     </el-dialog>
+    <!-- Dialog for deactivating student -->
+    <el-dialog
+      v-model="deactivateDialogVisible"
+      title="Deactivate Student"
+      width="35%"
+      destroy-on-close
+    >
+      <div style="line-height: 1.6">
+        <p>
+          Are you sure you want to deactivate
+          <strong>{{ studentBeingDeactivated?.firstName }} {{ studentBeingDeactivated?.lastName }}</strong>
+          (<em>{{ studentBeingDeactivated?.email }}</em>)?
+        </p>
+        <el-alert
+          title="Consequences of Deactivation"
+          type="warning"
+          :closable="false"
+          show-icon
+          style="margin-top: 15px; margin-bottom: 15px"
+        >
+          <ul style="padding-left: 20px; margin: 5px 0">
+            <li>The student will no longer be able to log in or submit weekly activity reports and peer evaluations.</li>
+            <li>Team membership is retained to preserve historical team records.</li>
+            <li>Teammates will no longer owe or submit peer evaluations for this student in subsequent weeks.</li>
+            <li>The account and submitted work are retained and can be reactivated in the future.</li>
+          </ul>
+        </el-alert>
+      </div>
+      <template #footer>
+        <div style="display: flex; justify-content: flex-end; gap: 10px">
+          <el-button @click="cancelDeactivate">Cancel</el-button>
+          <el-button type="danger" :loading="deactivating" @click="confirmDeactivate">
+            Confirm Deactivate
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </el-card>
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { searchStudents } from '@/apis/student'
+import { deactivateStudent, searchStudents } from '@/apis/student'
 import type {
   SearchStudentByCriteriaResponse,
   Student,
@@ -162,6 +208,38 @@ function showEditStudentDialog(student: Student) {
 function closeDialog() {
   dialogVisible.value = false
   loadStudents()
+}
+
+const deactivateDialogVisible = ref(false)
+const studentBeingDeactivated = ref<Student | null>(null)
+const deactivating = ref(false)
+
+function showDeactivateDialog(student: Student) {
+  studentBeingDeactivated.value = student
+  deactivateDialogVisible.value = true
+}
+
+function cancelDeactivate() {
+  deactivateDialogVisible.value = false
+  studentBeingDeactivated.value = null
+}
+
+async function confirmDeactivate() {
+  if (!studentBeingDeactivated.value || !studentBeingDeactivated.value.id) {
+    return
+  }
+  try {
+    deactivating.value = true
+    await deactivateStudent(studentBeingDeactivated.value.id)
+    ElMessage.success('Deactivate student successfully')
+    deactivateDialogVisible.value = false
+    studentBeingDeactivated.value = null
+    loadStudents()
+  } catch (error) {
+    // Handled by request error handler or UI toast
+  } finally {
+    deactivating.value = false
+  }
 }
 
 import { useRouter } from 'vue-router'
